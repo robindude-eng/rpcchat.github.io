@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>RPC_Reloaded</title>
+    <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.7.2.2.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
+        
+        :root {
+            --bg: #000; --text: #0f0; --accent: #0f0;
+            --msg-bg-in: rgba(0, 255, 0, 0.05);
+            --msg-bg-out: rgba(0, 255, 0, 0.1);
+            --border: #0f0; --header-bg: #000;
+        }
+
+        [data-theme="light"] {
+            --bg: #fff; --text: #000; --accent: #000;
+            --msg-bg-in: rgba(0, 0, 0, 0.05);
+            --msg-bg-out: rgba(0, 0, 0, 0.1);
+            --border: #000; --header-bg: #f0f0f0;
+        }
+
+        * { box-sizing: border-box; transition: background 0.2s; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; margin: 0; padding: 0; background: var(--bg); overflow: hidden; position: fixed; width: 100%; }
+        body { display: flex; flex-direction: column; color: var(--text); font-family: 'Courier New', monospace; }
+        
+        @keyframes scan { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        #header {
+            flex-shrink: 0; height: 60px; background: var(--header-bg); border-bottom: 2px solid var(--border);
+            display: flex; align-items: center; padding: 0 15px; gap: 8px; z-index: 100;
+        }
+        #header img { height: 38px; width: 38px; object-fit: contain; }
+        #header span { font-weight: 900; letter-spacing: 2px; font-size: 16px; animation: scan 3s infinite ease-in-out; }
+        
+        .btn-unit {
+            width: 40px; height: 40px; border: 1px solid var(--border);
+            background: transparent; color: var(--text); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; font-family: inherit; flex-shrink: 0;
+        }
+
+        #status-dot { width: 8px; height: 8px; background: #0f0; border-radius: 50%; box-shadow: 0 0 5px #0f0; flex-shrink: 0; }
+
+        #note-pad {
+            position: absolute; bottom: 65px; left: 10px; width: 280px; height: 220px;
+            background: var(--bg); border: 2px solid var(--border); z-index: 200;
+            display: none; flex-direction: column; box-shadow: 5px -5px 0px var(--border);
+        }
+        #note-area {
+            flex: 1; background: transparent; border: none; color: var(--text);
+            padding: 10px; font-family: inherit; resize: none; outline: none; font-size: 13px;
+        }
+        #note-warning {
+            font-size: 9px; padding: 5px; opacity: 0.6; text-align: center;
+            border-top: 1px solid var(--border); background: var(--header-bg);
+        }
+
+        #display-container { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+        #display { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; background: var(--bg); scroll-behavior: smooth; }
+        #spacer { flex: 1 1 auto; }
+        
+        #jump-down {
+            position: absolute; bottom: 20px; right: 20px; width: 42px; height: 42px;
+            background: var(--accent); color: var(--bg); border: none; border-radius: 4px;
+            cursor: pointer; display: none; font-size: 20px; font-weight: bold; z-index: 10;
+        }
+
+        .m-container { display: flex; flex-direction: column; margin: 10px 0; width: 100%; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .u-label { font-size: 9px; font-weight: 900; margin-bottom: 4px; color: var(--text); opacity: 0.6; text-transform: uppercase; letter-spacing: 1px; }
+        .m { 
+            max-width: 85%; padding: 12px 16px; font-size: 14px; word-wrap: break-word; line-height: 1.5;
+            font-family: 'Orbitron', sans-serif;
+        }
+        
+        .in-wrap { align-items: flex-start; }
+        .in { border-left: 3px solid var(--border); background: var(--msg-bg-in); }
+        .out-wrap { align-items: flex-end; }
+        .out { border-right: 3px solid var(--border); background: var(--msg-bg-out); text-align: right; }
+
+        #controls { 
+            display: flex; padding: 10px; background: var(--header-bg); border-top: 2px solid var(--border);
+            gap: 10px; padding-bottom: env(safe-area-inset-bottom, 10px); align-items: center;
+        }
+        
+        #input { flex: 1; height: 40px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: inherit; padding: 0 12px; outline: none; font-size: 16px; }
+        #send-btn { width: 75px; height: 40px; background: var(--accent); color: var(--bg); border: none; font-family: inherit; font-weight: 900; cursor: pointer; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); }
+    </style>
+</head>
+<body>
+
+    <div id="header">
+        <img src="icon.png" alt="" onerror="this.style.display='none'">
+        <span>RPC_RELOADED</span>
+        <button id="theme-toggle" class="btn-unit" onclick="toggleTheme()" style="margin-left: auto;">◑</button>
+        <button id="dev-note" class="btn-unit" onclick="alert('Don\'t share personal info nor real names and addresses.')">ℹ</button>
+        <div id="status-dot"></div>
+    </div>
+
+    <div id="note-pad">
+        <textarea id="note-area" placeholder="PRIVATE DATA..."></textarea>
+        <div id="note-warning">⚠️: everything will be erased if browser cache is cleared.</div>
+    </div>
+
+    <div id="display-container">
+        <div id="display">
+            <div id="spacer"></div>
+            <div id="msgs"></div>
+        </div>
+        <button id="jump-down" onclick="scrollToBottom()">↓</button>
+    </div>
+
+    <div id="controls">
+        <button id="note-toggle" class="btn-unit" onclick="toggleNotes()">📝</button>
+        <input type="text" id="input" autocomplete="off" spellcheck="false" placeholder="SIGNAL...">
+        <button id="send-btn" onclick="send()">SEND</button>
+    </div>
+
+    <script>
+        const pass = "bridge_secure_99";
+        let cryptoKey;
+
+        async function initCrypto() {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(pass), { name: "PBKDF2" }, false, ["deriveKey"]);
+            cryptoKey = await crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt: enc.encode("static_salt"), iterations: 100000, hash: "SHA-256" },
+                keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+            );
+        }
+
+        async function encrypt(text) {
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, new TextEncoder().encode(text));
+            return btoa(JSON.stringify({ iv: Array.from(iv), data: Array.from(new Uint8Array(ciphertext)) }));
+        }
+
+        async function decrypt(blob) {
+            try {
+                const { iv, data } = JSON.parse(atob(blob));
+                const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(iv) }, cryptoKey, new Uint8Array(data));
+                return new TextDecoder().decode(decrypted);
+            } catch (e) { return "[ENCRYPTED_SIGNAL]"; }
+        }
+
+        const savedTheme = localStorage.getItem('rpc_theme') || 'dark';
+        document.body.setAttribute('data-theme', savedTheme);
+
+        const noteArea = document.getElementById('note-area');
+        noteArea.value = localStorage.getItem('rpc_notes') || '';
+        noteArea.oninput = () => localStorage.setItem('rpc_notes', noteArea.value);
+
+        function toggleNotes() {
+            const pad = document.getElementById('note-pad');
+            pad.style.display = pad.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        function toggleTheme() {
+            const current = document.body.getAttribute('data-theme');
+            const target = current === 'light' ? 'dark' : 'light';
+            document.body.setAttribute('data-theme', target);
+            localStorage.setItem('rpc_theme', target);
+        }
+
+        const p = ['GHOST','VOID','NULL','ROOT','NET','CRYPT','PROXY','NODE','DARK','SHADOW','ZERO','ONYX','STATIC','SILENT','PHANTOM','VECTOR','COBALT','NEON','CYPHER','EXO','KINETIC','OMEGA','XENON','VAPOR','SIGMA','CARBON','TITAN','FROST','BLITZ','REAPER','LOGIC','PULSE','GRID','SHIFT','BREACH','FLOW','CIRCUIT'];
+        const s = ['_X','_00','_V7','_SYS','_RAW','_BIT','_HUSH','_99','_CORE','_DATA','_PROTOCOL','_VOID','_HOST','_GHOST','_S1','_EXEC','_LINK','_SYNC','_NODE','_MESH','_DAEMON','_SHELL','_FLUX','_KERN','_OVER','_WAVE','_NULL','_EXIT'];
+        
+        let alias = localStorage.getItem('rpc_user');
+        if (!alias) {
+            alias = p[Math.floor(Math.random()*p.length)] + s[Math.floor(Math.random()*s.length)];
+            localStorage.setItem('rpc_user', alias);
+        }
+        
+        const pub = new PubNub({ publishKey: 'demo', subscribeKey: 'demo', userId: alias });
+        const ch = 'bridge_network';
+        const msgs = document.getElementById('msgs'), box = document.getElementById('display'), field = document.getElementById('input'), jumpBtn = document.getElementById('jump-down');
+
+        pub.subscribe({ channels: [ch] });
+        box.onscroll = () => { jumpBtn.style.display = (box.scrollHeight - box.scrollTop - box.clientHeight) > 200 ? 'block' : 'none'; };
+        function scrollToBottom() { box.scrollTop = box.scrollHeight; }
+
+        initCrypto().then(() => {
+            pub.fetchMessages({ channels: [ch], count: 30, includeUUID: true }, async (status, response) => {
+                if (response && response.channels[ch]) {
+                    for (const m of response.channels[ch]) {
+                        const clear = await decrypt(m.message);
+                        push(clear, m.uuid === alias, m.uuid);
+                    }
+                }
+            });
+        });
+
+        pub.addListener({ 
+            message: async (p) => { if(p.publisher !== alias) { const clear = await decrypt(p.message); push(clear, false, p.publisher); } },
+            status: (s) => { document.getElementById('status-dot').style.background = s.category === "PNConnectedCategory" ? "#0f0" : "#f00"; }
+        });
+
+        function parse(t) {
+            return t.replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/_(.*?)_/g, '<u>$1</u>').replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:inherit">link</a>');
+        }
+
+        function push(t, isSelf, sender) {
+            const isAtBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 200;
+            const container = document.createElement('div');
+            container.className = 'm-container ' + (isSelf ? 'out-wrap' : 'in-wrap');
+            container.innerHTML = `<span class="u-label">${sender}${isSelf ? ' (YOU)' : ''}</span><div class="m ${isSelf ? 'out' : 'in'}">${parse(t)}</div>`;
+            msgs.appendChild(container);
+            if (isSelf || isAtBottom) setTimeout(scrollToBottom, 50);
+        }
+
+        async function send() {
+            const val = field.value.trim();
+            if (val && cryptoKey) {
+                const secure = await encrypt(val);
+                pub.publish({ channel: ch, message: secure });
+                push(val, true, alias);
+                field.value = '';
+                field.focus();
+            }
+        }
+        field.addEventListener("keypress", (e) => { if (e.key === "Enter") send(); });
+    </script>
+</body>
+</html>
